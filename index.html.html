@@ -13,7 +13,6 @@
     
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -286,9 +285,11 @@
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
+        
+        // We only need Firestore now!
         const db = firebase.firestore();
-        const storage = firebase.storage(); // Initialize Storage
         let issues = [];
+        let currentImageBase64 = null; // Stores our compressed image
 
         // =========================================================
         // 2. 📡 REAL-TIME DATABASE LISTENER
@@ -358,7 +359,6 @@
             }
         }
 
-        // --- AI Logic ---
         function analyzeIssue(description, category) {
             const dangerKeywords = ['fire', 'smoke', 'spark', 'shock', 'short circuit', 'exposed', 'gas'];
             const urgentKeywords = ['leak', 'broken', 'overflow', 'exam', 'stuck'];
@@ -373,24 +373,44 @@
             return { priority, confidence, reason, dept };
         }
 
-        // --- Image Preview UI ---
+        // --- ✨ THE HACKATHON CHEAT CODE: CANVAS COMPRESSION ---
+        // This shrinks the image so it fits perfectly inside Firestore Text!
         function previewImage(event) {
             const file = event.target.files[0];
             if(file){
                 const reader = new FileReader();
                 reader.onload = function(e){
-                    const preview = document.getElementById('image-preview');
-                    preview.style.backgroundImage = `url(${e.target.result})`;
-                    preview.classList.remove('hidden');
-                    document.getElementById('file-name').innerText = file.name;
-                    document.getElementById('file-name').classList.remove('hidden');
+                    const img = new Image();
+                    img.onload = function() {
+                        // Compress the image down to 500px width
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 500;
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                        // Convert back to a tiny Base64 string (Quality 0.6)
+                        currentImageBase64 = canvas.toDataURL('image/jpeg', 0.6);
+
+                        // Show preview
+                        const preview = document.getElementById('image-preview');
+                        preview.style.backgroundImage = `url(${currentImageBase64})`;
+                        preview.classList.remove('hidden');
+                        document.getElementById('file-name').innerText = "Image Attached ✓";
+                        document.getElementById('file-name').classList.remove('hidden');
+                        document.getElementById('file-name').classList.add('text-green-400');
+                    };
+                    img.src = e.target.result;
                 }
                 reader.readAsDataURL(file);
             }
         }
 
         // =========================================================
-        // 3. ⬆️ SAVE DATA AND IMAGE TO CLOUD
+        // 3. ⬆️ SAVE DATA TO CLOUD (Instant Upload)
         // =========================================================
         function handleFormSubmit(e) {
             e.preventDefault();
@@ -398,8 +418,6 @@
             const originalText = btn.innerHTML;
             const desc = document.getElementById('desc').value;
             const cat = document.querySelector('input[name="category"]:checked').value;
-            const fileInput = document.getElementById('evidence-upload');
-            const file = fileInput.files[0];
 
             btn.innerHTML = `<div class="loader ease-linear rounded-full border-2 border-t-2 border-white h-5 w-5 mr-2"></div> Processing...`;
             btn.disabled = true;
@@ -407,6 +425,7 @@
             const aiResult = analyzeIssue(desc, cat);
             const generatedId = 'TH-' + Math.floor(Math.random() * 9000 + 1000);
 
+            // Create payload with our compressed image string!
             const formData = {
                 id: generatedId,
                 category: cat,
@@ -419,31 +438,11 @@
                 rollno: document.getElementById('rollno').value,
                 date: new Date().toLocaleDateString(),
                 status: 'Pending',
-                imageUrl: null, // Default if no image
+                imageUrl: currentImageBase64, // Saved directly as text! No Storage needed.
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             };
 
-            // If user uploaded an image, save to Storage first
-            if (file) {
-                btn.innerHTML = `<div class="loader ease-linear rounded-full border-2 border-t-2 border-white h-5 w-5 mr-2"></div> Uploading Photo...`;
-                const storageRef = storage.ref('evidence/' + generatedId + '_' + file.name);
-                
-                storageRef.put(file).then((snapshot) => {
-                    snapshot.ref.getDownloadURL().then((downloadURL) => {
-                        formData.imageUrl = downloadURL; // Attach image URL to data
-                        saveDataToFirestore(formData, btn, originalText);
-                    });
-                }).catch((error) => {
-                    showToast("Image upload failed.", "error");
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                });
-            } else {
-                saveDataToFirestore(formData, btn, originalText);
-            }
-        }
-
-        function saveDataToFirestore(formData, btn, originalText) {
+            // Save straight to Firestore (Lightning Fast)
             db.collection("issues").add(formData).then(() => {
                 document.getElementById('ticket-id-display').innerText = formData.id;
                 document.getElementById('ai-priority-display').innerText = formData.priority;
@@ -469,6 +468,7 @@
 
         function resetReportForm() {
             document.getElementById('issueForm').reset();
+            currentImageBase64 = null; // Reset image string
             document.getElementById('image-preview').classList.add('hidden');
             document.getElementById('file-name').classList.add('hidden');
             document.getElementById('success-overlay').classList.remove('flex');
