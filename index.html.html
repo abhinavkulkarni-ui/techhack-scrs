@@ -13,6 +13,7 @@
     
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -96,7 +97,6 @@
                     <input type="text" id="track-id" placeholder="Track Ticket (e.g. TH-1234)" class="bg-transparent border-none text-white px-4 py-2 w-full focus:outline-none font-mono text-sm uppercase">
                     <button onclick="trackTicket()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-full text-sm font-bold transition transform active:scale-95">Track</button>
                 </div>
-                
                 <div id="track-result" class="mt-4 hidden max-w-md mx-auto glass p-5 rounded-2xl text-left transition-all border border-white/10"></div>
             </div>
         </div>
@@ -142,7 +142,7 @@
 
             <div class="mb-8">
                 <h2 class="text-2xl font-bold text-white">Report an Issue</h2>
-                <p class="text-gray-400 text-sm">Please provide details. Our AI will handle the rest.</p>
+                <p class="text-gray-400 text-sm">Please provide details. Uploading an image helps admins respond faster.</p>
             </div>
 
             <form id="issueForm" onsubmit="handleFormSubmit(event)">
@@ -172,6 +172,18 @@
                         <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Description</label>
                         <textarea id="desc" required rows="3" placeholder="Describe the issue... (e.g. 'Sparks coming from socket' will trigger High Priority)" class="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-indigo-500 transition"></textarea>
                     </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Evidence (Photo)</label>
+                        <div class="flex items-center gap-4">
+                            <label class="cursor-pointer bg-white/5 border border-white/10 hover:bg-white/10 text-gray-300 px-4 py-3 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 w-full md:w-auto">
+                                <i class="fa-solid fa-camera"></i> Attach Image
+                                <input type="file" id="evidence-upload" class="hidden" accept="image/*" onchange="previewImage(event)">
+                            </label>
+                            <div id="image-preview" class="hidden w-12 h-12 rounded-lg bg-cover bg-center border border-indigo-500 shrink-0"></div>
+                            <span id="file-name" class="text-xs text-gray-500 hidden md:block">No file selected</span>
+                        </div>
+                    </div>
                 </div>
 
                 <button type="submit" id="submitBtn" class="w-full mt-8 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl font-bold shadow-lg transition transform active:scale-95 flex justify-center items-center gap-2">
@@ -191,7 +203,7 @@
                 </div>
                 <div class="glass p-6 rounded-xl">
                     <h4 class="font-bold text-white mb-2 flex items-center gap-2"><i class="fa-regular fa-circle-question text-indigo-400"></i> Where is my data stored?</h4>
-                    <p class="text-sm text-gray-400">Data is securely stored using Google Firebase Firestore, ensuring fast and reliable access for administrative teams.</p>
+                    <p class="text-sm text-gray-400">Data and images are securely stored using enterprise-grade cloud architecture, ensuring fast and reliable access for administrative teams.</p>
                 </div>
             </div>
         </div>
@@ -240,7 +252,7 @@
                             <tr>
                                 <th class="p-4 text-xs font-bold text-gray-400 uppercase">Ticket ID</th>
                                 <th class="p-4 text-xs font-bold text-gray-400 uppercase">Category</th>
-                                <th class="p-4 text-xs font-bold text-gray-400 uppercase">Description</th>
+                                <th class="p-4 text-xs font-bold text-gray-400 uppercase">Description & Evidence</th>
                                 <th class="p-4 text-xs font-bold text-gray-400 uppercase">AI Analysis</th>
                                 <th class="p-4 text-xs font-bold text-gray-400 uppercase">Status</th>
                                 <th class="p-4 text-xs font-bold text-gray-400 uppercase text-right">Action</th>
@@ -275,6 +287,7 @@
             firebase.initializeApp(firebaseConfig);
         }
         const db = firebase.firestore();
+        const storage = firebase.storage(); // Initialize Storage
         let issues = [];
 
         // =========================================================
@@ -360,8 +373,24 @@
             return { priority, confidence, reason, dept };
         }
 
+        // --- Image Preview UI ---
+        function previewImage(event) {
+            const file = event.target.files[0];
+            if(file){
+                const reader = new FileReader();
+                reader.onload = function(e){
+                    const preview = document.getElementById('image-preview');
+                    preview.style.backgroundImage = `url(${e.target.result})`;
+                    preview.classList.remove('hidden');
+                    document.getElementById('file-name').innerText = file.name;
+                    document.getElementById('file-name').classList.remove('hidden');
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
         // =========================================================
-        // 3. ⬆️ SAVE DATA TO CLOUD
+        // 3. ⬆️ SAVE DATA AND IMAGE TO CLOUD
         // =========================================================
         function handleFormSubmit(e) {
             e.preventDefault();
@@ -369,13 +398,17 @@
             const originalText = btn.innerHTML;
             const desc = document.getElementById('desc').value;
             const cat = document.querySelector('input[name="category"]:checked').value;
+            const fileInput = document.getElementById('evidence-upload');
+            const file = fileInput.files[0];
 
             btn.innerHTML = `<div class="loader ease-linear rounded-full border-2 border-t-2 border-white h-5 w-5 mr-2"></div> Processing...`;
             btn.disabled = true;
 
             const aiResult = analyzeIssue(desc, cat);
+            const generatedId = 'TH-' + Math.floor(Math.random() * 9000 + 1000);
+
             const formData = {
-                id: 'TH-' + Math.floor(Math.random() * 9000 + 1000),
+                id: generatedId,
                 category: cat,
                 location: document.getElementById('location').value,
                 desc: desc,
@@ -386,9 +419,31 @@
                 rollno: document.getElementById('rollno').value,
                 date: new Date().toLocaleDateString(),
                 status: 'Pending',
+                imageUrl: null, // Default if no image
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             };
 
+            // If user uploaded an image, save to Storage first
+            if (file) {
+                btn.innerHTML = `<div class="loader ease-linear rounded-full border-2 border-t-2 border-white h-5 w-5 mr-2"></div> Uploading Photo...`;
+                const storageRef = storage.ref('evidence/' + generatedId + '_' + file.name);
+                
+                storageRef.put(file).then((snapshot) => {
+                    snapshot.ref.getDownloadURL().then((downloadURL) => {
+                        formData.imageUrl = downloadURL; // Attach image URL to data
+                        saveDataToFirestore(formData, btn, originalText);
+                    });
+                }).catch((error) => {
+                    showToast("Image upload failed.", "error");
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
+            } else {
+                saveDataToFirestore(formData, btn, originalText);
+            }
+        }
+
+        function saveDataToFirestore(formData, btn, originalText) {
             db.collection("issues").add(formData).then(() => {
                 document.getElementById('ticket-id-display').innerText = formData.id;
                 document.getElementById('ai-priority-display').innerText = formData.priority;
@@ -414,6 +469,8 @@
 
         function resetReportForm() {
             document.getElementById('issueForm').reset();
+            document.getElementById('image-preview').classList.add('hidden');
+            document.getElementById('file-name').classList.add('hidden');
             document.getElementById('success-overlay').classList.remove('flex');
             document.getElementById('success-overlay').classList.add('hidden');
         }
@@ -424,7 +481,7 @@
         function openAdminLogin() {
             document.getElementById('login-modal').classList.remove('hidden');
             document.getElementById('login-modal').classList.add('flex');
-            document.getElementById('admin-pwd-input').value = ''; // clear input
+            document.getElementById('admin-pwd-input').value = ''; 
         }
 
         function closeAdminLogin() {
@@ -462,11 +519,19 @@
                 let badgeClass = issue.status === 'In Progress' ? 'badge-yellow' : (issue.status === 'Resolved' ? 'badge-green' : 'badge-red');
                 let pBadge = issue.priority === 'High' ? 'badge-red' : (issue.priority === 'Medium' ? 'badge-yellow' : 'badge-blue');
 
+                // Generate View Photo Link if an image exists
+                let photoLink = issue.imageUrl 
+                    ? `<a href="${issue.imageUrl}" target="_blank" class="text-blue-400 hover:text-blue-300 text-xs font-bold mt-2 flex items-center gap-1 w-fit"><i class="fa-regular fa-image"></i> View Evidence</a>` 
+                    : `<span class="text-gray-600 text-[10px] mt-2 flex items-center gap-1"><i class="fa-solid fa-image-slash"></i> No Image</span>`;
+
                 const row = `
                     <tr class="hover:bg-white/5 transition border-b border-white/5 last:border-0">
                         <td class="p-4 font-mono text-indigo-400 font-bold">#${issue.id}</td>
                         <td class="p-4"><span class="font-bold text-gray-300">${issue.category}</span><br><span class="text-xs text-gray-500">${issue.location}</span></td>
-                        <td class="p-4 text-gray-400 max-w-xs truncate">${issue.desc}</td>
+                        <td class="p-4 text-gray-400 max-w-xs">
+                            <div class="truncate w-48">${issue.desc}</div>
+                            ${photoLink}
+                        </td>
                         <td class="p-4">
                             <div class="flex flex-col">
                                 <span class="badge ${pBadge} w-fit mb-1">${issue.priority}</span>
