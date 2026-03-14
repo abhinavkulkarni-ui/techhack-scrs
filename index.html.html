@@ -223,13 +223,21 @@
         </div>
     </div>
 
-    <div id="dashboard-modal" class="fixed inset-0 z-[100] bg-black/90 hidden backdrop-blur-md flex items-center justify-center p-4">
-        <div class="bg-[#0b1121] border border-white/10 w-full max-w-7xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
+    <div id="evidence-modal" class="fixed inset-0 z-[120] bg-black/95 hidden backdrop-blur-md flex flex-col items-center justify-center p-4">
+        <div class="relative max-w-4xl w-full flex flex-col items-center">
+            <button onclick="closeEvidence()" class="absolute -top-12 right-0 bg-white/10 hover:bg-white/20 p-2 rounded-full text-white transition"><i class="fa-solid fa-xmark"></i></button>
+            <img id="evidence-image-display" src="" class="max-w-full max-h-[80vh] object-contain rounded-lg border border-white/20 shadow-2xl">
+            <p class="text-gray-400 text-sm mt-4 font-mono">Evidence Attachment</p>
+        </div>
+    </div>
+
+    <div id="dashboard-modal" class="fixed inset-0 z-[100] bg-black/90 hidden backdrop-blur-md flex items-center justify-center p-2 md:p-4">
+        <div class="bg-[#0b1121] border border-white/10 w-full max-w-7xl h-[95vh] md:h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
             <button onclick="closeAdminMode()" class="absolute top-4 right-4 bg-white/10 p-2 rounded-full hover:bg-white/20 transition z-10 text-white"><i class="fa-solid fa-xmark"></i></button>
 
-            <div class="bg-[#151e32] p-6 border-b border-white/5 flex justify-between items-center">
+            <div class="bg-[#151e32] p-4 md:p-6 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 class="text-xl font-bold text-white flex items-center gap-2"><i class="fa-solid fa-server text-indigo-400"></i> Admin Command Center</h2>
+                    <h2 class="text-lg md:text-xl font-bold text-white flex items-center gap-2"><i class="fa-solid fa-server text-indigo-400"></i> Admin Command Center</h2>
                     <p class="text-gray-500 text-xs mt-1">Status: <span class="text-green-400 font-mono">Secure Connection Active</span></p>
                 </div>
                 <div class="flex gap-3">
@@ -244,10 +252,9 @@
                 </div>
             </div>
 
-            <div class="flex-1 overflow-auto p-6">
-                <div class="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="bg-white/5 border-b border-white/10">
+            <div class="flex-1 overflow-auto p-4 md:p-6">
+                <div class="bg-white/5 rounded-xl border border-white/10 overflow-x-auto">
+                    <table class="w-full text-left border-collapse min-w-[800px]"> <thead class="bg-white/5 border-b border-white/10">
                             <tr>
                                 <th class="p-4 text-xs font-bold text-gray-400 uppercase">Ticket ID</th>
                                 <th class="p-4 text-xs font-bold text-gray-400 uppercase">Category</th>
@@ -271,7 +278,7 @@
 
     <script>
         // =========================================================
-        // 1. 🔥 FIREBASE CONFIGURATION (YOUR REAL KEYS)
+        // 1. 🔥 FIREBASE CONFIGURATION
         // =========================================================
         const firebaseConfig = {
             apiKey: "AIzaSyDywmt5asR8rDjv-mvkubSOgwnlcB61OLk",
@@ -286,10 +293,9 @@
             firebase.initializeApp(firebaseConfig);
         }
         
-        // We only need Firestore now!
         const db = firebase.firestore();
         let issues = [];
-        let currentImageBase64 = null; // Stores our compressed image
+        let currentImageBase64 = null; 
 
         // =========================================================
         // 2. 📡 REAL-TIME DATABASE LISTENER
@@ -306,7 +312,6 @@
             console.error("Firebase Error:", error);
         });
 
-        // --- Toasts & UI Helpers ---
         function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
@@ -322,9 +327,6 @@
         }
         function scrollToSection(id) { document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); }
 
-        // =========================================================
-        // 🔍 TICKET TRACKING LOGIC
-        // =========================================================
         function trackTicket() {
             const id = document.getElementById('track-id').value.trim().toUpperCase();
             const resultDiv = document.getElementById('track-result');
@@ -362,34 +364,27 @@
         function analyzeIssue(description, category) {
             const dangerKeywords = ['fire', 'smoke', 'spark', 'shock', 'short circuit', 'exposed', 'gas'];
             const urgentKeywords = ['leak', 'broken', 'overflow', 'exam', 'stuck'];
-            
             let priority = 'Low', confidence = 75, reason = 'Standard Request', dept = 'General Admin';
             const deptMap = { 'Electrical': 'Facilities', 'Plumbing': 'Civil', 'Internet': 'IT Cell', 'Cleanliness': 'Housekeeping', 'Other': 'Admin' };
             dept = deptMap[category] || 'Admin';
-
             const lowerDesc = description.toLowerCase();
             if (dangerKeywords.some(w => lowerDesc.includes(w))) { priority = 'High'; confidence = 98; reason = 'Detected Danger Keywords'; } 
             else if (urgentKeywords.some(w => lowerDesc.includes(w))) { priority = 'Medium'; confidence = 89; reason = 'Detected Urgency Keywords'; }
             return { priority, confidence, reason, dept };
         }
 
-        // --- ✨ THE HACKATHON CHEAT CODE: AGGRESSIVE CANVAS COMPRESSION ---
         function previewImage(event) {
             const file = event.target.files[0];
             if(file){
-                // Show user that it is working in the background
                 document.getElementById('file-name').innerText = "Compressing Image... ⏳";
                 document.getElementById('file-name').classList.remove('hidden', 'text-green-400');
                 document.getElementById('file-name').classList.add('text-yellow-400');
-                
-                // Disable submit button temporarily
                 document.getElementById('submitBtn').disabled = true;
 
                 const reader = new FileReader();
                 reader.onload = function(e){
                     const img = new Image();
                     img.onload = function() {
-                        // Aggressive compression: max 300px width to guarantee it fits under 1MB
                         const canvas = document.createElement('canvas');
                         const MAX_WIDTH = 300;
                         const scaleSize = MAX_WIDTH / img.width;
@@ -399,15 +394,12 @@
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                        // Convert to Base64 with heavy compression (Quality 0.4)
                         currentImageBase64 = canvas.toDataURL('image/jpeg', 0.4);
 
-                        // Show preview
                         const preview = document.getElementById('image-preview');
                         preview.style.backgroundImage = `url(${currentImageBase64})`;
                         preview.classList.remove('hidden');
                         
-                        // Re-enable button and show success
                         document.getElementById('file-name').innerText = "Image Attached ✓";
                         document.getElementById('file-name').classList.remove('text-yellow-400');
                         document.getElementById('file-name').classList.add('text-green-400');
@@ -419,9 +411,6 @@
             }
         }
 
-        // =========================================================
-        // 3. ⬆️ SAVE DATA TO CLOUD (Instant Upload)
-        // =========================================================
         function handleFormSubmit(e) {
             e.preventDefault();
             const btn = document.getElementById('submitBtn');
@@ -435,7 +424,6 @@
             const aiResult = analyzeIssue(desc, cat);
             const generatedId = 'TH-' + Math.floor(Math.random() * 9000 + 1000);
 
-            // Create payload with our compressed image string!
             const formData = {
                 id: generatedId,
                 category: cat,
@@ -448,11 +436,10 @@
                 rollno: document.getElementById('rollno').value,
                 date: new Date().toLocaleDateString(),
                 status: 'Pending',
-                imageUrl: currentImageBase64, // Saved directly as text! No Storage needed.
+                imageUrl: currentImageBase64, 
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             };
 
-            // Save straight to Firestore (Lightning Fast)
             db.collection("issues").add(formData).then(() => {
                 document.getElementById('ticket-id-display').innerText = formData.id;
                 document.getElementById('ai-priority-display').innerText = formData.priority;
@@ -478,16 +465,13 @@
 
         function resetReportForm() {
             document.getElementById('issueForm').reset();
-            currentImageBase64 = null; // Reset image string
+            currentImageBase64 = null; 
             document.getElementById('image-preview').classList.add('hidden');
             document.getElementById('file-name').classList.add('hidden');
             document.getElementById('success-overlay').classList.remove('flex');
             document.getElementById('success-overlay').classList.add('hidden');
         }
 
-        // =========================================================
-        // 4. 📊 DASHBOARD & ADMIN AUTHENTICATION
-        // =========================================================
         function openAdminLogin() {
             document.getElementById('login-modal').classList.remove('hidden');
             document.getElementById('login-modal').classList.add('flex');
@@ -529,9 +513,9 @@
                 let badgeClass = issue.status === 'In Progress' ? 'badge-yellow' : (issue.status === 'Resolved' ? 'badge-green' : 'badge-red');
                 let pBadge = issue.priority === 'High' ? 'badge-red' : (issue.priority === 'Medium' ? 'badge-yellow' : 'badge-blue');
 
-                // Generate View Photo Link if an image exists
+                // 🖼️ NEW FIX: Uses the popup modal instead of a new tab!
                 let photoLink = issue.imageUrl 
-                    ? `<a href="${issue.imageUrl}" target="_blank" class="text-blue-400 hover:text-blue-300 text-xs font-bold mt-2 flex items-center gap-1 w-fit"><i class="fa-regular fa-image"></i> View Evidence</a>` 
+                    ? `<button onclick="showEvidence('${index}')" class="text-blue-400 hover:text-blue-300 text-xs font-bold mt-2 flex items-center gap-1 w-fit"><i class="fa-regular fa-image"></i> View Evidence</button>` 
                     : `<span class="text-gray-600 text-[10px] mt-2 flex items-center gap-1"><i class="fa-solid fa-image-slash"></i> No Image</span>`;
 
                 const row = `
@@ -559,6 +543,21 @@
                 `;
                 tbody.innerHTML += row;
             });
+        }
+
+        // 🖼️ NEW FUNCTION: Opens the Image Modal
+        function showEvidence(index) {
+            const issue = issues[index];
+            document.getElementById('evidence-image-display').src = issue.imageUrl;
+            document.getElementById('evidence-modal').classList.remove('hidden');
+            document.getElementById('evidence-modal').classList.add('flex');
+        }
+
+        // 🖼️ NEW FUNCTION: Closes the Image Modal
+        function closeEvidence() {
+            document.getElementById('evidence-modal').classList.add('hidden');
+            document.getElementById('evidence-modal').classList.remove('flex');
+            document.getElementById('evidence-image-display').src = "";
         }
 
         function changeStatus(index) {
